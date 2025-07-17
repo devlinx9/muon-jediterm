@@ -31,7 +31,7 @@ final class JediTermDefaultSearchComponent extends JPanel implements JediTermSea
 
     myTextField.setPreferredSize(new Dimension(
       jediTermWidget.myTerminalPanel.myCharSize.width * 30,
-      jediTermWidget.myTerminalPanel.myCharSize.height + 3));
+      jediTermWidget.myTerminalPanel.myCharSize.height + 6));
     myTextField.setEditable(true);
 
     updateLabel(null);
