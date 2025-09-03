@@ -285,12 +285,12 @@ public class TerminalPanel extends JComponent implements TerminalDisplay, Termin
             final Point charCoords = panelToCharCoords(e.getPoint());
             int startLine = charCoords.y;
             while (startLine > -getScrollLinesStorage().getSize()
-                   && myTerminalTextBuffer.getLine(startLine - 1).isWrapped()) {
+              && myTerminalTextBuffer.getLine(startLine - 1).isWrapped()) {
               startLine--;
             }
             int endLine = charCoords.y;
             while (endLine < myTerminalTextBuffer.getHeight()
-                   && myTerminalTextBuffer.getLine(endLine).isWrapped()) {
+              && myTerminalTextBuffer.getLine(endLine).isWrapped()) {
               endLine++;
             }
             mySelection = new TerminalSelection(new Point(0, startLine));
@@ -433,7 +433,7 @@ public class TerminalPanel extends JComponent implements TerminalDisplay, Termin
 
   private @Nullable HyperlinkStyle findHyperlink(@Nullable Cell cell) {
     if (cell != null && cell.getColumn() >= 0 && cell.getColumn() < myTerminalTextBuffer.getWidth() &&
-        cell.getLine() >= -myTerminalTextBuffer.getHistoryLinesCount() && cell.getLine() <= myTerminalTextBuffer.getHeight()) {
+      cell.getLine() >= -myTerminalTextBuffer.getHistoryLinesCount() && cell.getLine() <= myTerminalTextBuffer.getHeight()) {
       TextStyle style = myTerminalTextBuffer.getStyleAt(cell.getColumn(), cell.getLine());
       if (style instanceof HyperlinkStyle) {
         return (HyperlinkStyle) style;
@@ -610,9 +610,14 @@ public class TerminalPanel extends JComponent implements TerminalDisplay, Termin
     }
     String selectionText = SelectionUtil.getSelectionText(selectionStart, selectionEnd, myTerminalTextBuffer);
     if (selectionText.length() != 0) {
+      // Keep existing behavior (PRIMARY vs CLIPBOARD) for internal handler:
       myCopyPasteHandler.setContents(selectionText, useSystemSelectionClipboardIfAvailable);
+
+      // NEW: always push to the global clipboard (and PRIMARY if present)
+      ClipboardUtil.copyToAllClipboards(selectionText);
     }
   }
+
 
   private void pasteFromClipboard(boolean useSystemSelectionClipboardIfAvailable) {
     String text = myCopyPasteHandler.getContents(useSystemSelectionClipboardIfAvailable);
@@ -718,7 +723,7 @@ public class TerminalPanel extends JComponent implements TerminalDisplay, Termin
       int oldCharHeight = fontMetricsHeight + (int) (lineSpacing * 2) + 2;
       int oldDescent = fo.getDescent() + (int) lineSpacing;
       LOG.debug("charHeight=" + oldCharHeight + "->" + myCharSize.height +
-                ", descent=" + oldDescent + "->" + myDescent);
+                  ", descent=" + oldDescent + "->" + myDescent);
     }
 
     myMonospaced = isMonospaced(fo);
@@ -768,7 +773,7 @@ public class TerminalPanel extends JComponent implements TerminalDisplay, Termin
     if (graphics instanceof Graphics2D) {
       Graphics2D myGfx = (Graphics2D) graphics;
       final Object mode = mySettingsProvider.useAntialiasing() ? RenderingHints.VALUE_TEXT_ANTIALIAS_ON
-                                                               : RenderingHints.VALUE_TEXT_ANTIALIAS_OFF;
+        : RenderingHints.VALUE_TEXT_ANTIALIAS_OFF;
       final RenderingHints hints = new RenderingHints(
         RenderingHints.KEY_TEXT_ANTIALIASING, mode);
       myGfx.setRenderingHints(hints);
@@ -1457,8 +1462,8 @@ public class TerminalPanel extends JComponent implements TerminalDisplay, Termin
       if (charCode >= 0x200c) {
         //noinspection RedundantIfStatement
         if ((charCode <= 0x200f) ||
-            (charCode >= 0x2028 && charCode <= 0x202e) ||
-            (charCode >= 0x206a && charCode <= 0x206f)) {
+          (charCode >= 0x2028 && charCode <= 0x202e) ||
+          (charCode >= 0x206a && charCode <= 0x206f)) {
           return true;
         }
       }
@@ -1486,7 +1491,7 @@ public class TerminalPanel extends JComponent implements TerminalDisplay, Termin
       return myNormalFont;
     }
     return bold ? (italic ? myBoldItalicFont : myBoldFont)
-                : (italic ? myItalicFont : myNormalFont);
+      : (italic ? myItalicFont : myNormalFont);
   }
 
   private ColorPalette getPalette() {
@@ -1917,9 +1922,9 @@ public class TerminalPanel extends JComponent implements TerminalDisplay, Termin
   private static boolean isAltPressedOnly(@NotNull KeyEvent e) {
     int modifiersEx = e.getModifiersEx();
     return (modifiersEx & InputEvent.ALT_DOWN_MASK) != 0 &&
-           (modifiersEx & InputEvent.ALT_GRAPH_DOWN_MASK) == 0 &&
-           (modifiersEx & InputEvent.CTRL_DOWN_MASK) == 0 &&
-           (modifiersEx & InputEvent.SHIFT_DOWN_MASK) == 0;
+      (modifiersEx & InputEvent.ALT_GRAPH_DOWN_MASK) == 0 &&
+      (modifiersEx & InputEvent.CTRL_DOWN_MASK) == 0 &&
+      (modifiersEx & InputEvent.SHIFT_DOWN_MASK) == 0;
   }
 
   private boolean processCharacter(@NotNull KeyEvent e) {
@@ -1945,17 +1950,17 @@ public class TerminalPanel extends JComponent implements TerminalDisplay, Termin
 
   private static boolean isCodeThatScrolls(int keycode) {
     return keycode == KeyEvent.VK_UP
-           || keycode == KeyEvent.VK_DOWN
-           || keycode == KeyEvent.VK_LEFT
-           || keycode == KeyEvent.VK_RIGHT
-           || keycode == KeyEvent.VK_BACK_SPACE
-           || keycode == KeyEvent.VK_INSERT
-           || keycode == KeyEvent.VK_DELETE
-           || keycode == KeyEvent.VK_ENTER
-           || keycode == KeyEvent.VK_HOME
-           || keycode == KeyEvent.VK_END
-           || keycode == KeyEvent.VK_PAGE_UP
-           || keycode == KeyEvent.VK_PAGE_DOWN;
+      || keycode == KeyEvent.VK_DOWN
+      || keycode == KeyEvent.VK_LEFT
+      || keycode == KeyEvent.VK_RIGHT
+      || keycode == KeyEvent.VK_BACK_SPACE
+      || keycode == KeyEvent.VK_INSERT
+      || keycode == KeyEvent.VK_DELETE
+      || keycode == KeyEvent.VK_ENTER
+      || keycode == KeyEvent.VK_HOME
+      || keycode == KeyEvent.VK_END
+      || keycode == KeyEvent.VK_PAGE_UP
+      || keycode == KeyEvent.VK_PAGE_DOWN;
   }
 
   private boolean processTerminalKeyTyped(KeyEvent e) {
