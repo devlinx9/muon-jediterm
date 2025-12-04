@@ -7,11 +7,14 @@ import com.jediterm.terminal.*;
 import com.jediterm.terminal.emulator.mouse.MouseFormat;
 import com.jediterm.terminal.emulator.mouse.MouseMode;
 import com.jediterm.terminal.util.CharUtils;
+import com.jediterm.terminal.util.ClipboardUtil;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 import java.util.List;
 
 /**
@@ -83,7 +86,8 @@ public class JediEmulator extends DataStreamIteratingEmulator {
           StringBuilder sb = new StringBuilder("Unhandled control character:");
           CharUtils.appendChar(sb, CharUtils.CharacterType.NONE, ch);
           unhandledLogThrottler(sb.toString());
-        } else { // Plain characters
+        }
+        else { // Plain characters
           myDataStream.pushChar(ch);
           String nonControlCharacters = myDataStream.readNonControlCharacters(terminal.distanceToLineEnd());
 
@@ -241,6 +245,27 @@ public class JediEmulator extends DataStreamIteratingEmulator {
       case 10:
       case 11:
         return processColorQuery(args);
+      case 52: // OSC 52 – clipboard
+        // args form: 52 ; <clipboard spec> ; <base64 text>
+        //String clipboardSpec = args.getStringAt(1); // usually "c", "0", "1", etc.
+        String base64 = args.getStringAt(2);
+
+        if (base64 != null) {
+          try {
+            byte[] decoded = Base64.getDecoder().decode(base64);
+            String text = new String(decoded, StandardCharsets.UTF_8);
+
+            ClipboardUtil.copyToAllClipboards(text);
+            LOG.debug("Processed copy to clipboard OSC");
+
+            return false;
+          }
+          catch (IllegalArgumentException e) {
+            // bad base64, ignore
+          }
+        }
+        break;
+
       case 104:
         // `Ps = 104 ; c` (Reset Color Number c).
         // Let's support resetting to avoid warnings.
@@ -314,11 +339,12 @@ public class JediEmulator extends DataStreamIteratingEmulator {
         }
         break;
       case '#':
-          if (secondCh == '8') {
-              terminal.fillScreen('E');
-          } else {
-              unsupported(ch, secondCh);
-          }
+        if (secondCh == '8') {
+          terminal.fillScreen('E');
+        }
+        else {
+          unsupported(ch, secondCh);
+        }
         break;
       case '%':
         switch (secondCh) {
@@ -385,7 +411,8 @@ public class JediEmulator extends DataStreamIteratingEmulator {
         }
         LOG.warn(msg);
       }
-    } else {
+    }
+    else {
       logThrottlerLimit *= 10;
     }
   }
@@ -476,7 +503,8 @@ public class JediEmulator extends DataStreamIteratingEmulator {
       case 'r':
         if (args.startsWithQuestionMark()) {
           return restoreDecPrivateModeValues(args); //
-        } else {
+        }
+        else {
           //Set Top and Bottom Margins
           return setScrollingRegion(args); //DECSTBM
         }
@@ -544,10 +572,12 @@ public class JediEmulator extends DataStreamIteratingEmulator {
     if (mode == 0) { //Clear Current Column (default)
       myTerminal.clearTabStopAtCursor();
       return true;
-    } else if (mode == 3) {
+    }
+    else if (mode == 3) {
       myTerminal.clearAllTabStops();
       return true;
-    } else {
+    }
+    else {
       return false;
     }
   }
@@ -608,28 +638,32 @@ public class JediEmulator extends DataStreamIteratingEmulator {
         case 1000:
           if (enabled) {
             setMouseMode(MouseMode.MOUSE_REPORTING_NORMAL);
-          } else {
+          }
+          else {
             setMouseMode(MouseMode.MOUSE_REPORTING_NONE);
           }
           return true;
         case 1001:
           if (enabled) {
             setMouseMode(MouseMode.MOUSE_REPORTING_HILITE);
-          } else {
+          }
+          else {
             setMouseMode(MouseMode.MOUSE_REPORTING_NONE);
           }
           return true;
         case 1002:
           if (enabled) {
             setMouseMode(MouseMode.MOUSE_REPORTING_BUTTON_MOTION);
-          } else {
+          }
+          else {
             setMouseMode(MouseMode.MOUSE_REPORTING_NONE);
           }
           return true;
         case 1003:
           if (enabled) {
             setMouseMode(MouseMode.MOUSE_REPORTING_ALL_MOTION);
-          } else {
+          }
+          else {
             setMouseMode(MouseMode.MOUSE_REPORTING_NONE);
           }
           return true;
@@ -640,21 +674,24 @@ public class JediEmulator extends DataStreamIteratingEmulator {
         case 1005:
           if (enabled) {
             myTerminal.setMouseFormat(MouseFormat.MOUSE_FORMAT_XTERM_EXT);
-          } else {
+          }
+          else {
             myTerminal.setMouseFormat(MouseFormat.MOUSE_FORMAT_XTERM);
           }
           return true;
         case 1006:
           if (enabled) {
             myTerminal.setMouseFormat(MouseFormat.MOUSE_FORMAT_SGR);
-          } else {
+          }
+          else {
             myTerminal.setMouseFormat(MouseFormat.MOUSE_FORMAT_XTERM);
           }
           return true;
         case 1015:
           if (enabled) {
             myTerminal.setMouseFormat(MouseFormat.MOUSE_FORMAT_URXVT);
-          } else {
+          }
+          else {
             myTerminal.setMouseFormat(MouseFormat.MOUSE_FORMAT_XTERM);
           }
           return true;
@@ -674,7 +711,8 @@ public class JediEmulator extends DataStreamIteratingEmulator {
         default:
           return false;
       }
-    } else {
+    }
+    else {
       switch (args.getArg(0, -1)) {
         case 2: //Keyboard Action Mode (AM)
           setModeEnabled(TerminalMode.KeyboardAction, enabled);
@@ -720,7 +758,8 @@ public class JediEmulator extends DataStreamIteratingEmulator {
       LOG.debug("Sending Device Report Status : " + str);
       myTerminal.deviceStatusReport(str);
       return true;
-    } else if (c == 6) {
+    }
+    else if (c == 6) {
       int row = myTerminal.getCursorY();
       int column = myTerminal.getCursorX();
       String str = "\033[" + row + ";" + column + "R";
@@ -728,7 +767,8 @@ public class JediEmulator extends DataStreamIteratingEmulator {
       LOG.debug("Sending Device Report Status : " + str);
       myTerminal.deviceStatusReport(str);
       return true;
-    } else {
+    }
+    else {
       LOG.warn("Sending Device Report Status : unsupported parameter: " + args);
       return false;
     }
@@ -1060,17 +1100,20 @@ public class JediEmulator extends DataStreamIteratingEmulator {
       int val1 = args.getArg(index + 3, -1);
       int val2 = args.getArg(index + 4, -1);
       if ((val0 >= 0 && val0 < 256) &&
-              (val1 >= 0 && val1 < 256) &&
-              (val2 >= 0 && val2 < 256)) {
+        (val1 >= 0 && val1 < 256) &&
+        (val2 >= 0 && val2 < 256)) {
         return new TerminalColor(val0, val1, val2);
-      } else {
+      }
+      else {
         LOG.warn("Bogus color setting " + args);
         return null;
       }
-    } else if (code == 5) {
+    }
+    else if (code == 5) {
       /* indexed color */
       return ColorPalette.getIndexedTerminalColor(args.getArg(index + 2, 0));
-    } else {
+    }
+    else {
       LOG.warn("Unsupported code for color attribute " + args);
       return null;
     }
@@ -1080,7 +1123,8 @@ public class JediEmulator extends DataStreamIteratingEmulator {
     int code = args.getArg(i + 1, 0);
     if (code == 2) {
       return 5;
-    } else if (code == 5) {
+    }
+    else if (code == 5) {
       return 3;
     }
     return 1;

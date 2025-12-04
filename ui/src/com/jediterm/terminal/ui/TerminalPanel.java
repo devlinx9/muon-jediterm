@@ -8,6 +8,7 @@ import com.jediterm.core.util.TermSize;
 import com.jediterm.terminal.*;
 import com.jediterm.terminal.SubstringFinder.FindResult.FindItem;
 import com.jediterm.terminal.TextStyle.Option;
+import com.jediterm.terminal.util.ClipboardUtil;
 import com.jediterm.terminal.emulator.ColorPalette;
 import com.jediterm.terminal.emulator.charset.CharacterSets;
 import com.jediterm.terminal.emulator.mouse.MouseFormat;

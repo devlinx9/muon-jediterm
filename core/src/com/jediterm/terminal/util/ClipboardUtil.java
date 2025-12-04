@@ -1,4 +1,4 @@
-package com.jediterm.terminal.ui;
+package com.jediterm.terminal.util;
 
 import java.awt.*;
 import java.awt.datatransfer.StringSelection;
