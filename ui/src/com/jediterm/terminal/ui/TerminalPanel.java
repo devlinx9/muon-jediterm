@@ -1080,6 +1080,8 @@ public class TerminalPanel extends JComponent implements TerminalDisplay, Termin
         mySelection = null;
         Point p = panelToCharCoords(e.getPoint());
         listener.mouseWheelMoved(p.x, p.y, new AwtMouseWheelEvent(e));
+        e.consume();
+        return;
       }
       if (myTerminalTextBuffer.isUsingAlternateBuffer() && mySettingsProvider.sendArrowKeysInAlternativeMode()) {
         //Send Arrow keys instead
