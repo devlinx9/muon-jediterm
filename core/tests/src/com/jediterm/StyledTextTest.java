@@ -9,10 +9,13 @@ import com.jediterm.terminal.model.JediTerminal;
 import com.jediterm.terminal.model.StyleState;
 import com.jediterm.terminal.model.TerminalTextBuffer;
 import com.jediterm.util.BackBufferDisplay;
+import com.jediterm.util.TestSession;
 import junit.framework.TestCase;
 import org.jetbrains.annotations.NotNull;
+import org.junit.Assert;
 
 import java.io.IOException;
+import java.util.EnumSet;
 
 /**
  * @author traff
@@ -58,41 +61,63 @@ public class StyledTextTest extends TestCase {
   public void test24BitForegroundColourParsing() throws IOException {
     TerminalTextBuffer terminalTextBuffer = getBufferFor(12, 1, CSI + "38;2;0;128;0mHello");
     TextStyle style = terminalTextBuffer.getStyleAt(0, 0);
-    assertEquals(new TerminalColor(0, 128, 0), style.getForeground());
+    assertEquals(TerminalColor.rgb(0, 128, 0), style.getForeground());
   }
 
   public void test24BitBackgroundColourParsing() throws IOException {
     TerminalTextBuffer terminalTextBuffer = getBufferFor(12, 1, CSI + "48;2;0;128;0mHello");
     TextStyle style = terminalTextBuffer.getStyleAt(0, 0);
-    assertEquals(new TerminalColor(0, 128, 0), style.getBackground());
+    assertEquals(TerminalColor.rgb(0, 128, 0), style.getBackground());
   }
 
   public void test24BitCombinedColourParsing() throws IOException {
     TerminalTextBuffer terminalTextBuffer = getBufferFor(12, 1, CSI + "0;38;2;0;128;0;48;2;0;255;0;1mHello");
     TextStyle style = terminalTextBuffer.getStyleAt(0, 0);
-    assertEquals(new TerminalColor(0, 128, 0), style.getForeground());
-    assertEquals(new TerminalColor(0, 255, 0), style.getBackground());
+    assertEquals(TerminalColor.rgb(0, 128, 0), style.getForeground());
+    assertEquals(TerminalColor.rgb(0, 255, 0), style.getBackground());
     assertTrue(style.hasOption(TextStyle.Option.BOLD));
   }
 
   public void testIndexedForegroundColourParsing() throws IOException {
     TerminalTextBuffer terminalTextBuffer = getBufferFor(12, 1, CSI + "38;5;46mHello");
     TextStyle style = terminalTextBuffer.getStyleAt(0, 0);
-    assertEquals(new TerminalColor(0, 255, 0), style.getForeground());
+    assertEquals(TerminalColor.rgb(0, 255, 0), style.getForeground());
   }
 
   public void testIndexedBackgroundColourParsing() throws IOException {
     TerminalTextBuffer terminalTextBuffer = getBufferFor(12, 1, CSI + "48;5;46mHello");
     TextStyle style = terminalTextBuffer.getStyleAt(0, 0);
-    assertEquals(new TerminalColor(0, 255, 0), style.getBackground());
+    assertEquals(TerminalColor.rgb(0, 255, 0), style.getBackground());
   }
 
   public void testIndexedCombinedColourParsing() throws IOException {
     TerminalTextBuffer terminalTextBuffer = getBufferFor(12, 1, CSI + "0;38;5;46;48;5;196;1mHello");
     TextStyle style = terminalTextBuffer.getStyleAt(0, 0);
-    assertEquals(new TerminalColor(0, 255, 0), style.getForeground());
-    assertEquals(new TerminalColor(255, 0, 0), style.getBackground());
+    assertEquals(TerminalColor.rgb(0, 255, 0), style.getForeground());
+    assertEquals(TerminalColor.rgb(255, 0, 0), style.getBackground());
     assertTrue(style.hasOption(TextStyle.Option.BOLD));
+  }
+
+  public void testQueryKeyModifierNotChangingStyle() throws IOException {
+    TestSession session = new TestSession(10, 3);
+    TextStyle initialStyle = new TextStyle(null, null);
+    session.process("foo\r\n");
+    Assert.assertEquals(session.getCurrentStyle(), initialStyle);
+    session.process("\u001B[?4m");
+    Assert.assertEquals(session.getCurrentStyle(), initialStyle);
+    session.process("bar\r\n");
+    Assert.assertEquals(session.getCurrentStyle(), initialStyle);
+
+    TextStyle boldStyle = new TextStyle(null, null, EnumSet.of(TextStyle.Option.BOLD));
+    session.process("\u001B[1m");
+    Assert.assertEquals(session.getCurrentStyle(), boldStyle);
+    session.process("baz");
+    Assert.assertEquals(session.getCurrentStyle(), boldStyle);
+
+    TerminalTextBuffer textBuffer = session.getTerminalTextBuffer();
+    Assert.assertEquals(initialStyle, textBuffer.getStyleAt(0, 0)); // foo
+    Assert.assertEquals(initialStyle, textBuffer.getStyleAt(0, 1)); // bar
+    Assert.assertEquals(boldStyle, textBuffer.getStyleAt(0, 2)); // baz
   }
 
   private @NotNull TerminalTextBuffer getBufferFor(int width, int height, String content) throws IOException {

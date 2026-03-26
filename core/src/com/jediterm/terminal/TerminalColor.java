@@ -22,8 +22,16 @@ public class TerminalColor {
     this(colorIndex, null, null);
   }
 
+  /**
+   * @deprecated use {@link #TerminalColor(Color)} instead
+   */
+  @Deprecated
   public TerminalColor(int r, int g, int b) {
     this(-1, new Color(r, g, b), null);
+  }
+
+  public TerminalColor(@NotNull Color color) {
+    this(-1, color, null);
   }
 
   public TerminalColor(@NotNull Supplier<Color> colorSupplier) {
@@ -44,14 +52,6 @@ public class TerminalColor {
     myColorIndex = colorIndex;
     myColor = color;
     myColorSupplier = colorSupplier;
-  }
-
-  public static @NotNull TerminalColor index(int colorIndex) {
-    return new TerminalColor(colorIndex);
-  }
-
-  public static TerminalColor rgb(int r, int g, int b) {
-    return new TerminalColor(r, g, b);
   }
 
   public boolean isIndexed() {
@@ -83,10 +83,23 @@ public class TerminalColor {
     return Objects.hash(myColorIndex, myColor);
   }
 
+  public static @Nullable TerminalColor color(@Nullable Color color) {
+    return color != null ? new TerminalColor(color) : null;
+  }
+
+  public static @NotNull TerminalColor index(int colorIndex) {
+    return new TerminalColor(colorIndex);
+  }
+
+  public static @NotNull TerminalColor rgb(int r, int g, int b) {
+    return new TerminalColor(new Color(r, g, b));
+  }
+
+  /**
+   * @deprecated use {@link #color(Color)} instead
+   */
+  @Deprecated
   public static @Nullable TerminalColor fromColor(@Nullable Color color) {
-    if (color == null) {
-      return null;
-    }
-    return rgb(color.getRed(), color.getGreen(), color.getBlue());
+    return color(color);
   }
 }

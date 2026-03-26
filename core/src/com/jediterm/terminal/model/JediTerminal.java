@@ -13,8 +13,9 @@ import com.jediterm.terminal.emulator.charset.CharacterSet;
 import com.jediterm.terminal.emulator.charset.GraphicSet;
 import com.jediterm.terminal.emulator.charset.GraphicSetState;
 import com.jediterm.terminal.emulator.mouse.*;
+import com.jediterm.terminal.model.hyperlinks.HyperlinkFilter;
+import com.jediterm.terminal.model.hyperlinks.LinkResult;
 import com.jediterm.terminal.model.hyperlinks.LinkResultItem;
-import com.jediterm.terminal.model.hyperlinks.TextProcessing;
 import com.jediterm.terminal.util.CharUtils;
 import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NotNull;
@@ -76,6 +77,7 @@ public class JediTerminal implements Terminal, TerminalMouseListener, TerminalCo
 
   private final List<TerminalApplicationTitleListener> myApplicationTitleListeners = new CopyOnWriteArrayList<>();
   private final List<TerminalResizeListener> myTerminalResizeListeners = new CopyOnWriteArrayList<>();
+  private @Nullable HyperlinkFilter myUrlHyperlinkFilter;
 
   public JediTerminal(@NotNull TerminalDisplay display, @NotNull TerminalTextBuffer buf, @NotNull StyleState initialStyleState) {
     myTerminalKeyEncoder = new TerminalKeyEncoder(Platform.current());
@@ -101,8 +103,7 @@ public class JediTerminal implements Terminal, TerminalMouseListener, TerminalCo
   public void setModeEnabled(TerminalMode mode, boolean enabled) {
     if (enabled) {
       myModes.add(mode);
-    }
-    else {
+    } else {
       myModes.remove(mode);
     }
 
@@ -158,8 +159,7 @@ public class JediTerminal implements Terminal, TerminalMouseListener, TerminalCo
       }
 
       finishText();
-    }
-    finally {
+    } finally {
       myTerminalTextBuffer.unlock();
     }
   }
@@ -203,8 +203,7 @@ public class JediTerminal implements Terminal, TerminalMouseListener, TerminalCo
       if (myCursorY < myScrollRegionTop) {
         myCursorY = myScrollRegionTop;
       }
-    }
-    finally {
+    } finally {
       myTerminalTextBuffer.unlock();
     }
   }
@@ -254,15 +253,13 @@ public class JediTerminal implements Terminal, TerminalMouseListener, TerminalCo
     if (level == 1 || level == 2) {
       myGraphicSetState.designateGraphicSet(0, CharacterSet.ASCII); //ASCII designated as G0
       myGraphicSetState
-        .designateGraphicSet(1, CharacterSet.DEC_SUPPLEMENTAL); //TODO: not DEC supplemental, but ISO Latin-1 supplemental designated as G1
+              .designateGraphicSet(1, CharacterSet.DEC_SUPPLEMENTAL); //TODO: not DEC supplemental, but ISO Latin-1 supplemental designated as G1
       mapCharsetToGL(0);
       mapCharsetToGR(1);
-    }
-    else if (level == 3) {
+    } else if (level == 3) {
       designateCharacterSet(0, 'B'); //ASCII designated as G0
       mapCharsetToGL(0);
-    }
-    else {
+    } else {
       throw new IllegalArgumentException();
     }
   }
@@ -366,8 +363,7 @@ public class JediTerminal implements Terminal, TerminalMouseListener, TerminalCo
       char[] chars = new char[stop - myCursorX];
       Arrays.fill(chars, CharUtils.EMPTY_CHAR);
       writeDecodedCharacters(chars);
-    }
-    else {
+    } else {
       myCursorX = stop;
     }
     adjustXY(+1);
@@ -420,11 +416,8 @@ public class JediTerminal implements Terminal, TerminalMouseListener, TerminalCo
           break;
       }
       // Rest of lines
-      if (beginY != endY) {
-        clearLines(beginY, endY);
-      }
-    }
-    finally {
+      clearLines(beginY, endY);
+    } finally {
       myTerminalTextBuffer.unlock();
     }
   }
@@ -433,8 +426,7 @@ public class JediTerminal implements Terminal, TerminalMouseListener, TerminalCo
     myTerminalTextBuffer.lock();
     try {
       myTerminalTextBuffer.clearLines(beginY, endY);
-    }
-    finally {
+    } finally {
       myTerminalTextBuffer.unlock();
     }
   }
@@ -451,8 +443,20 @@ public class JediTerminal implements Terminal, TerminalMouseListener, TerminalCo
 
   @Override
   public void useAlternateBuffer(boolean enabled) {
-    myTerminalTextBuffer.useAlternateBuffer(enabled);
-    myDisplay.useAlternateScreenBuffer(enabled);
+    myTerminalTextBuffer.modify(() -> {
+      boolean wasUsingAlternateBuffer = myTerminalTextBuffer.isUsingAlternateBuffer();
+      myTerminalTextBuffer.useAlternateBuffer(enabled);
+
+      TermSize curSize = getSize();
+      if (wasUsingAlternateBuffer && !enabled && myTerminalTextBuffer.getSize() != curSize) {
+        // If the alternate buffer was disabled,
+        // the size of the main buffer is the same now as it was before entering the alternative buffer.
+        // So, we need to trigger the main buffer resize to make it respect the current screen size.
+        resizeTextBufferAndUpdateCursor(curSize);
+      }
+
+      myDisplay.useAlternateScreenBuffer(enabled);
+    });
   }
 
   @Override
@@ -464,8 +468,7 @@ public class JediTerminal implements Terminal, TerminalMouseListener, TerminalCo
   public void setApplicationArrowKeys(boolean enabled) {
     if (enabled) {
       myTerminalKeyEncoder.arrowKeysApplicationSequences();
-    }
-    else {
+    } else {
       myTerminalKeyEncoder.arrowKeysAnsiCursorSequences();
     }
   }
@@ -474,8 +477,7 @@ public class JediTerminal implements Terminal, TerminalMouseListener, TerminalCo
   public void setApplicationKeypad(boolean enabled) {
     if (enabled) {
       myTerminalKeyEncoder.keypadApplicationSequences();
-    }
-    else {
+    } else {
       myTerminalKeyEncoder.keypadAnsiSequences();
     }
   }
@@ -507,8 +509,7 @@ public class JediTerminal implements Terminal, TerminalMouseListener, TerminalCo
           LOG.warn("Unsupported erase in line mode:" + arg);
           break;
       }
-    }
-    finally {
+    } finally {
       myTerminalTextBuffer.unlock();
     }
   }
@@ -518,8 +519,7 @@ public class JediTerminal implements Terminal, TerminalMouseListener, TerminalCo
     myTerminalTextBuffer.lock();
     try {
       myTerminalTextBuffer.deleteCharacters(myCursorX, myCursorY - 1, count);
-    }
-    finally {
+    } finally {
       myTerminalTextBuffer.unlock();
     }
   }
@@ -530,8 +530,7 @@ public class JediTerminal implements Terminal, TerminalMouseListener, TerminalCo
     try {
       final int extent = Math.min(count, myTerminalWidth - myCursorX);
       myTerminalTextBuffer.insertBlankCharacters(myCursorX, myCursorY - 1, extent);
-    }
-    finally {
+    } finally {
       myTerminalTextBuffer.unlock();
     }
   }
@@ -543,8 +542,7 @@ public class JediTerminal implements Terminal, TerminalMouseListener, TerminalCo
     myTerminalTextBuffer.lock();
     try {
       myTerminalTextBuffer.eraseCharacters(myCursorX, myCursorX + count, myCursorY - 1);
-    }
-    finally {
+    } finally {
       myTerminalTextBuffer.unlock();
     }
   }
@@ -569,8 +567,7 @@ public class JediTerminal implements Terminal, TerminalMouseListener, TerminalCo
     myTerminalTextBuffer.lock();
     try {
       myTerminalTextBuffer.insertLines(myCursorY - 1, count, myScrollRegionBottom);
-    }
-    finally {
+    } finally {
       myTerminalTextBuffer.unlock();
     }
   }
@@ -580,8 +577,7 @@ public class JediTerminal implements Terminal, TerminalMouseListener, TerminalCo
     myTerminalTextBuffer.lock();
     try {
       myTerminalTextBuffer.deleteLines(myCursorY - 1, count, myScrollRegionBottom);
-    }
-    finally {
+    } finally {
       myTerminalTextBuffer.unlock();
     }
   }
@@ -595,8 +591,7 @@ public class JediTerminal implements Terminal, TerminalMouseListener, TerminalCo
       myCursorY = Math.max(myCursorY, scrollingRegionTop());
       adjustXY(-1);
       myDisplay.setCursor(myCursorX, myCursorY);
-    }
-    finally {
+    } finally {
       myTerminalTextBuffer.unlock();
     }
   }
@@ -610,8 +605,7 @@ public class JediTerminal implements Terminal, TerminalMouseListener, TerminalCo
       myCursorY = Math.min(myCursorY, scrollingRegionBottom());
       adjustXY(-1);
       myDisplay.setCursor(myCursorX, myCursorY);
-    }
-    finally {
+    } finally {
       myTerminalTextBuffer.unlock();
     }
   }
@@ -625,14 +619,12 @@ public class JediTerminal implements Terminal, TerminalMouseListener, TerminalCo
     try {
       if (myCursorY == myScrollRegionBottom) {
         scrollArea(myScrollRegionTop, scrollingRegionSize(), -1);
-      }
-      else {
+      } else {
         myCursorY += 1;
         adjustXY(-1);
         myDisplay.setCursor(myCursorX, myCursorY);
       }
-    }
-    finally {
+    } finally {
       myTerminalTextBuffer.unlock();
     }
   }
@@ -649,13 +641,11 @@ public class JediTerminal implements Terminal, TerminalMouseListener, TerminalCo
       myCursorX = 0;
       if (myCursorY == myScrollRegionBottom) {
         scrollArea(myScrollRegionTop, scrollingRegionSize(), -1);
-      }
-      else {
+      } else {
         myCursorY += 1;
       }
       myDisplay.setCursor(myCursorX, myCursorY);
-    }
-    finally {
+    } finally {
       myTerminalTextBuffer.unlock();
     }
   }
@@ -673,13 +663,11 @@ public class JediTerminal implements Terminal, TerminalMouseListener, TerminalCo
     try {
       if (myCursorY == myScrollRegionTop) {
         scrollArea(myScrollRegionTop, scrollingRegionSize(), 1);
-      }
-      else {
+      } else {
         myCursorY -= 1;
         myDisplay.setCursor(myCursorX, myCursorY);
       }
-    }
-    finally {
+    } finally {
       myTerminalTextBuffer.unlock();
     }
   }
@@ -730,8 +718,7 @@ public class JediTerminal implements Terminal, TerminalMouseListener, TerminalCo
     myTerminalTextBuffer.modify(() -> {
       if (isOriginMode()) {
         myCursorY = y + scrollingRegionTop() - 1;
-      }
-      else {
+      } else {
         myCursorY = y;
       }
 
@@ -773,8 +760,7 @@ public class JediTerminal implements Terminal, TerminalMouseListener, TerminalCo
     myTerminalTextBuffer.lock();
     try {
       scrollArea(myScrollRegionTop, scrollingRegionSize(), count);
-    }
-    finally {
+    } finally {
       myTerminalTextBuffer.unlock();
     }
   }
@@ -806,15 +792,14 @@ public class JediTerminal implements Terminal, TerminalMouseListener, TerminalCo
 
   private StoredCursor createCursorState() {
     return new StoredCursor(myCursorX, myCursorY, myStyleState.getCurrent(),
-                            isAutoWrap(), isOriginMode(), myGraphicSetState);
+            isAutoWrap(), isOriginMode(), myGraphicSetState);
   }
 
   @Override
   public void restoreCursor() {
     if (myStoredCursor != null) {
       restoreCursor(myStoredCursor);
-    }
-    else { //If nothing was saved by DECSC
+    } else { //If nothing was saved by DECSC
       setModeEnabled(TerminalMode.OriginMode, false); //Resets origin mode (DECOM)
       cursorPosition(1, 1); //Moves the cursor to the home position (upper left of screen).
       myStyleState.reset(); //Turns all character attributes off (normal setting).
@@ -909,9 +894,9 @@ public class JediTerminal implements Terminal, TerminalMouseListener, TerminalCo
     switch (myMouseFormat) {
       case MOUSE_FORMAT_XTERM_EXT:
         sb.append(String.format("\033[M%c%c%c",
-                                (char) (32 + button),
-                                (char) (32 + x),
-                                (char) (32 + y)));
+                (char) (32 + button),
+                (char) (32 + x),
+                (char) (32 + y)));
         break;
       case MOUSE_FORMAT_URXVT:
         sb.append(String.format("\033[%d;%d;%dM", 32 + button, x, y));
@@ -920,11 +905,10 @@ public class JediTerminal implements Terminal, TerminalMouseListener, TerminalCo
         if ((button & MouseButtonModifierFlags.MOUSE_BUTTON_SGR_RELEASE_FLAG) != 0) {
           // for mouse release event
           sb.append(String.format("\033[<%d;%d;%dm",
-                                  button ^ MouseButtonModifierFlags.MOUSE_BUTTON_SGR_RELEASE_FLAG,
-                                  x,
-                                  y));
-        }
-        else {
+                  button ^ MouseButtonModifierFlags.MOUSE_BUTTON_SGR_RELEASE_FLAG,
+                  x,
+                  y));
+        } else {
           // for mouse press/motion event
           sb.append(String.format("\033[<%d;%d;%dM", button, x, y));
         }
@@ -993,8 +977,7 @@ public class JediTerminal implements Terminal, TerminalMouseListener, TerminalCo
         if (myMouseFormat == MouseFormat.MOUSE_FORMAT_SGR) {
           // for SGR 1006 mode
           cb |= MouseButtonModifierFlags.MOUSE_BUTTON_SGR_RELEASE_FLAG;
-        }
-        else {
+        } else {
           // for 1000/1005/1015 mode
           cb = MouseButtonCodes.RELEASE;
         }
@@ -1079,14 +1062,19 @@ public class JediTerminal implements Terminal, TerminalMouseListener, TerminalCo
 
   @Override
   public void setLinkUriStarted(@NotNull String uri) {
-    TextProcessing textProcessing = myTerminalTextBuffer.getTextProcessing$core();
-    if (textProcessing != null) {
-      TextStyle style = myStyleState.getCurrent();
-      List<LinkResultItem> linkResultItems = textProcessing.applyFilter(uri);
-      linkResultItems.stream()
-        .filter(item -> item.getStartOffset() == 0 && item.getEndOffset() == uri.length())
-        .findFirst().ifPresent(linkItem ->
-                                 myStyleState.setCurrent(new HyperlinkStyle(style, linkItem.getLinkInfo())));
+    HyperlinkFilter urlFilter = myUrlHyperlinkFilter;
+    if (urlFilter != null) {
+      LinkResult linkResult = urlFilter.apply(uri);
+      if (linkResult != null) {
+        TextStyle style = myStyleState.getCurrent();
+        @SuppressWarnings("SimplifyOptionalCallChains")
+        LinkResultItem linkItem = linkResult.getItems().stream()
+          .filter(item -> item.getStartOffset() == 0 && item.getEndOffset() == uri.length())
+          .findFirst().orElse(null);
+        if (linkItem != null) {
+          myStyleState.setCurrent(new HyperlinkStyle(style, linkItem.getLinkInfo()));
+        }
+      }
     }
   }
 
@@ -1099,6 +1087,17 @@ public class JediTerminal implements Terminal, TerminalMouseListener, TerminalCo
         myStyleState.setCurrent(prevTextStyle);
       }
     }
+  }
+
+  /**
+   * Sets the URL hyperlink filter for parsing URLs in OSC8 links.
+   * Please note it can be called with acquired `com.jediterm.terminal.model.TerminalTextBuffer#lock()`.
+   * Therefore, to avoid deadlocks, it shouldn't acquire any other locks, like IntelliJ global read/write lock.
+   *
+   * @param urlHyperlinkFilter The URL hyperlink filter to set.
+   */
+  public void setUrlHyperlinkFilter(@Nullable HyperlinkFilter urlHyperlinkFilter) {
+    myUrlHyperlinkFilter = urlHyperlinkFilter;
   }
 
   @Override
@@ -1119,13 +1118,11 @@ public class JediTerminal implements Terminal, TerminalMouseListener, TerminalCo
       if (dirX > 0) { // so we move it into the predefined direction
         if (myCursorX == myTerminalWidth) { //if it is the last in the line we return where we were
           myCursorX -= 1;
-        }
-        else {
+        } else {
           myCursorX += 1;
         }
-      }
-      else {
-        myCursorX -= 1; //low surrogate character can't be the first character in the line
+      } else {
+        myCursorX = Math.max(0, myCursorX - 1);
       }
     }
   }
@@ -1172,20 +1169,27 @@ public class JediTerminal implements Terminal, TerminalMouseListener, TerminalCo
   private void doResize(@NotNull TermSize newTermSize, @NotNull RequestOrigin origin, int oldHeight) {
     TermSize oldTermSize = new TermSize(myTerminalWidth, myTerminalHeight);
     myTerminalTextBuffer.modify(() -> {
-      TerminalResizeResult result = myTerminalTextBuffer.resize(newTermSize, getCursorPosition(), myDisplay.getSelection());
+      resizeTextBufferAndUpdateCursor(newTermSize);
       myTerminalWidth = newTermSize.getColumns();
       myTerminalHeight = newTermSize.getRows();
-      myCursorX = result.getNewCursor().getX() - 1;
-      myCursorY = result.getNewCursor().getY();
       myTabulator.resize(myTerminalWidth);
       myScrollRegionBottom += myTerminalHeight - oldHeight;
 
-      myDisplay.setCursor(myCursorX, myCursorY);
       myDisplay.onResize(newTermSize, origin);
       for (TerminalResizeListener resizeListener : myTerminalResizeListeners) {
         resizeListener.onResize(oldTermSize, newTermSize);
       }
     });
+  }
+
+  /**
+   * Requires text buffer lock
+   */
+  private void resizeTextBufferAndUpdateCursor(@NotNull TermSize newTermSize) {
+    TerminalResizeResult result = myTerminalTextBuffer.resize(newTermSize, getCursorPosition(), myDisplay.getSelection());
+    myCursorX = result.getNewCursor().getX() - 1;
+    myCursorY = result.getNewCursor().getY();
+    myDisplay.setCursor(myCursorX, myCursorY);
   }
 
   public static @NotNull TermSize ensureTermMinimumSize(@NotNull TermSize termSize) {
@@ -1202,8 +1206,7 @@ public class JediTerminal implements Terminal, TerminalMouseListener, TerminalCo
       for (int row = 1; row <= myTerminalHeight; row++) {
         myTerminalTextBuffer.writeString(0, row, newCharBuf(chars));
       }
-    }
-    finally {
+    } finally {
       myTerminalTextBuffer.unlock();
     }
   }
@@ -1229,11 +1232,15 @@ public class JediTerminal implements Terminal, TerminalMouseListener, TerminalCo
         }
         j++;
       }
-    }
-    else {
+    } else {
       buf = str;
     }
     return new CharBuffer(buf, 0, buf.length);
+  }
+
+  @Override
+  public boolean ambiguousCharsAreDoubleWidth() {
+    return myDisplay.ambiguousCharsAreDoubleWidth();
   }
 
   public @NotNull TerminalTextBuffer getTerminalTextBuffer() {
@@ -1309,8 +1316,7 @@ public class JediTerminal implements Terminal, TerminalMouseListener, TerminalCo
             myTabStops.add(i);
           }
         }
-      }
-      else {
+      } else {
         Iterator<Integer> it = myTabStops.iterator();
         while (it.hasNext()) {
           int i = it.next();

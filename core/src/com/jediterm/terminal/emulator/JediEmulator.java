@@ -86,10 +86,9 @@ public class JediEmulator extends DataStreamIteratingEmulator {
           StringBuilder sb = new StringBuilder("Unhandled control character:");
           CharUtils.appendChar(sb, CharUtils.CharacterType.NONE, ch);
           unhandledLogThrottler(sb.toString());
-        }
-        else { // Plain characters
+        } else { // Plain characters
           myDataStream.pushChar(ch);
-          String nonControlCharacters = myDataStream.readNonControlCharacters(terminal.distanceToLineEnd());
+          String nonControlCharacters = readNonControlCharacters(terminal.distanceToLineEnd(), terminal.ambiguousCharsAreDoubleWidth());
 
           terminal.writeCharacters(nonControlCharacters);
         }
@@ -97,17 +96,59 @@ public class JediEmulator extends DataStreamIteratingEmulator {
     }
   }
 
+  private String readNonControlCharacters(int maxChars, boolean ambiguousAreDWC) throws IOException {
+    var result = myDataStream.readNonControlCharacters(maxChars);
+    var visualLength = 0;
+    var end = 0;
+    for (int i = 0; i < result.length(); ++i) {
+      // TODO surrogate pair support missing, but it must be implemented in the entire library at once
+      var c = result.charAt(i);
+      var sourceLength = i + 1;
+      visualLength += CharUtils.isDoubleWidthCharacter(c, ambiguousAreDWC) ? 2 : 1;
+      // Three cases:
+      if (visualLength == maxChars) {
+        end = sourceLength; // 1) found exactly maxChars
+        break;
+      }
+      else if (visualLength < maxChars) {
+        end = sourceLength; // 2) found less, continue searching
+      }
+      else { // visualLength > maxChars
+        break; // 3) found less on the previous iteration, but now it's too many (1 char of space left, but a DWC is found)
+      }
+    }
+    boolean nextIsDWC = false;
+    if (end < result.length()) {
+      var pushBack = new char[result.length() - end];
+      result.getChars(end, result.length(), pushBack, 0);
+      nextIsDWC = CharUtils.isDoubleWidthCharacter(pushBack[0], ambiguousAreDWC);
+      myDataStream.pushBackBuffer(pushBack, pushBack.length);
+    }
+    // A special case: if the next char is DWC, but it doesn't fit on this line (case 3 above),
+    // then we must fill the line with an additional space to trigger line wrapping.
+    // Otherwise, it'll be an endless loop: read, realize it doesn't fit, push back, read again...
+    if (end == maxChars - 1 && nextIsDWC) return result.substring(0, end) + " ";
+    return result.substring(0, end);
+  }
+
   private void processEscapeSequence(char ch, Terminal terminal) throws IOException {
     switch (ch) {
       case '[': // Control Sequence Introducer (CSI)
         ControlSequence args = new ControlSequence(myDataStream);
-        if (LOG.isDebugEnabled()) {
-          LOG.debug("Control Sequence (" + args.getDebugInfo() + ")");
-        }
         if (!args.pushBackReordered(myDataStream)) {
-          boolean result = processControlSequence(args);
-          if (!result) {
-            LOG.warn("Unhandled Control Sequence (" + args.getDebugInfo() + ")");
+          try {
+            boolean result = processControlSequence(args);
+            if (LOG.isDebugEnabled()) {
+              if (result) {
+                LOG.debug("Control Sequence ({})", args.getDebugInfo());
+              }
+              else {
+                LOG.warn("Unhandled Control Sequence ({})", args.getDebugInfo());
+              }
+            }
+          }
+          catch (Exception e) {
+            LOG.error("Error processing Control Sequence ({})", args.getDebugInfo(), e);
           }
         }
         break;
@@ -339,12 +380,11 @@ public class JediEmulator extends DataStreamIteratingEmulator {
         }
         break;
       case '#':
-        if (secondCh == '8') {
-          terminal.fillScreen('E');
-        }
-        else {
-          unsupported(ch, secondCh);
-        }
+          if (secondCh == '8') {
+              terminal.fillScreen('E');
+          } else {
+              unsupported(ch, secondCh);
+          }
         break;
       case '%':
         switch (secondCh) {
@@ -411,8 +451,7 @@ public class JediEmulator extends DataStreamIteratingEmulator {
         }
         LOG.warn(msg);
       }
-    }
-    else {
+    } else {
       logThrottlerLimit *= 10;
     }
   }
@@ -488,6 +527,10 @@ public class JediEmulator extends DataStreamIteratingEmulator {
           // the modifiers pressed with a given key
           return false;
         }
+        if (args.startsWithQuestionMark()) {
+          // `CSI ? Pp m` Query key modifier options (XTQMODKEYS), xterm.
+          return false;
+        }
         return characterAttributes(args); //Character Attributes (SGR)
       case 'n':
         return deviceStatusReport(args); //DSR
@@ -503,8 +546,7 @@ public class JediEmulator extends DataStreamIteratingEmulator {
       case 'r':
         if (args.startsWithQuestionMark()) {
           return restoreDecPrivateModeValues(args); //
-        }
-        else {
+        } else {
           //Set Top and Bottom Margins
           return setScrollingRegion(args); //DECSTBM
         }
@@ -517,7 +559,14 @@ public class JediEmulator extends DataStreamIteratingEmulator {
 
   private boolean windowManipulation(ControlSequence args) {
     // CSI Ps ; Ps ; Ps t
+    // https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h4-Functions-using-CSI-_-ordered-by-the-final-character-lparen-s-rparen:CSI-Ps;Ps;Ps-t.1EB0
     switch (args.getArg(0, -1)) {
+      case 1:
+        // Do not process "De-iconify window", restoring/unminimizing IDE can be unexpected.
+        return true;
+      case 2:
+        // Do no process "Iconify window", minimizing IDE can be unexpected.
+        return true;
       case 8:
 //        Ps = 8  ;  height ;  width -> Resize the text area to given
 //        height and width in characters.  Omitted parameters reuse the
@@ -572,12 +621,10 @@ public class JediEmulator extends DataStreamIteratingEmulator {
     if (mode == 0) { //Clear Current Column (default)
       myTerminal.clearTabStopAtCursor();
       return true;
-    }
-    else if (mode == 3) {
+    } else if (mode == 3) {
       myTerminal.clearAllTabStops();
       return true;
-    }
-    else {
+    } else {
       return false;
     }
   }
@@ -638,32 +685,28 @@ public class JediEmulator extends DataStreamIteratingEmulator {
         case 1000:
           if (enabled) {
             setMouseMode(MouseMode.MOUSE_REPORTING_NORMAL);
-          }
-          else {
+          } else {
             setMouseMode(MouseMode.MOUSE_REPORTING_NONE);
           }
           return true;
         case 1001:
           if (enabled) {
             setMouseMode(MouseMode.MOUSE_REPORTING_HILITE);
-          }
-          else {
+          } else {
             setMouseMode(MouseMode.MOUSE_REPORTING_NONE);
           }
           return true;
         case 1002:
           if (enabled) {
             setMouseMode(MouseMode.MOUSE_REPORTING_BUTTON_MOTION);
-          }
-          else {
+          } else {
             setMouseMode(MouseMode.MOUSE_REPORTING_NONE);
           }
           return true;
         case 1003:
           if (enabled) {
             setMouseMode(MouseMode.MOUSE_REPORTING_ALL_MOTION);
-          }
-          else {
+          } else {
             setMouseMode(MouseMode.MOUSE_REPORTING_NONE);
           }
           return true;
@@ -674,24 +717,21 @@ public class JediEmulator extends DataStreamIteratingEmulator {
         case 1005:
           if (enabled) {
             myTerminal.setMouseFormat(MouseFormat.MOUSE_FORMAT_XTERM_EXT);
-          }
-          else {
+          } else {
             myTerminal.setMouseFormat(MouseFormat.MOUSE_FORMAT_XTERM);
           }
           return true;
         case 1006:
           if (enabled) {
             myTerminal.setMouseFormat(MouseFormat.MOUSE_FORMAT_SGR);
-          }
-          else {
+          } else {
             myTerminal.setMouseFormat(MouseFormat.MOUSE_FORMAT_XTERM);
           }
           return true;
         case 1015:
           if (enabled) {
             myTerminal.setMouseFormat(MouseFormat.MOUSE_FORMAT_URXVT);
-          }
-          else {
+          } else {
             myTerminal.setMouseFormat(MouseFormat.MOUSE_FORMAT_XTERM);
           }
           return true;
@@ -704,6 +744,10 @@ public class JediEmulator extends DataStreamIteratingEmulator {
         case 2004:
           setModeEnabled(TerminalMode.BracketedPasteMode, enabled);
           return true;
+        case 2026:
+          SynchronizedOutput syncOutput = new SynchronizedOutput(myDataStream, myTerminal);
+          syncOutput.await();
+          return true;
         case 9001:
           // suppress warnings about `win32-input-mode`
           // https://github.com/microsoft/terminal/blob/main/doc/specs/%234999%20-%20Improved%20keyboard%20handling%20in%20Conpty.md
@@ -711,8 +755,7 @@ public class JediEmulator extends DataStreamIteratingEmulator {
         default:
           return false;
       }
-    }
-    else {
+    } else {
       switch (args.getArg(0, -1)) {
         case 2: //Keyboard Action Mode (AM)
           setModeEnabled(TerminalMode.KeyboardAction, enabled);
@@ -758,8 +801,7 @@ public class JediEmulator extends DataStreamIteratingEmulator {
       LOG.debug("Sending Device Report Status : " + str);
       myTerminal.deviceStatusReport(str);
       return true;
-    }
-    else if (c == 6) {
+    } else if (c == 6) {
       int row = myTerminal.getCursorY();
       int column = myTerminal.getCursorX();
       String str = "\033[" + row + ";" + column + "R";
@@ -767,15 +809,13 @@ public class JediEmulator extends DataStreamIteratingEmulator {
       LOG.debug("Sending Device Report Status : " + str);
       myTerminal.deviceStatusReport(str);
       return true;
-    }
-    else {
+    } else {
       LOG.warn("Sending Device Report Status : unsupported parameter: " + args);
       return false;
     }
   }
 
   private boolean cursorShape(ControlSequence args) {
-    myTerminal.cursorBackward(1);
     switch (args.getArg(0, 0)) {
       case 0:
       case 1:
@@ -1084,7 +1124,9 @@ public class JediEmulator extends DataStreamIteratingEmulator {
           builder.setBackground(ColorPalette.getIndexedTerminalColor(arg - 92));
           break;
         default:
-          LOG.warn("Unknown character attribute:" + arg);
+          if (LOG.isDebugEnabled()) {
+            LOG.debug("Unknown character attribute:{}", arg);
+          }
       }
       i = i + step;
     }
@@ -1100,20 +1142,17 @@ public class JediEmulator extends DataStreamIteratingEmulator {
       int val1 = args.getArg(index + 3, -1);
       int val2 = args.getArg(index + 4, -1);
       if ((val0 >= 0 && val0 < 256) &&
-        (val1 >= 0 && val1 < 256) &&
-        (val2 >= 0 && val2 < 256)) {
-        return new TerminalColor(val0, val1, val2);
-      }
-      else {
+              (val1 >= 0 && val1 < 256) &&
+              (val2 >= 0 && val2 < 256)) {
+        return TerminalColor.rgb(val0, val1, val2);
+      } else {
         LOG.warn("Bogus color setting " + args);
         return null;
       }
-    }
-    else if (code == 5) {
+    } else if (code == 5) {
       /* indexed color */
       return ColorPalette.getIndexedTerminalColor(args.getArg(index + 2, 0));
-    }
-    else {
+    } else {
       LOG.warn("Unsupported code for color attribute " + args);
       return null;
     }
@@ -1123,8 +1162,7 @@ public class JediEmulator extends DataStreamIteratingEmulator {
     int code = args.getArg(i + 1, 0);
     if (code == 2) {
       return 5;
-    }
-    else if (code == 5) {
+    } else if (code == 5) {
       return 3;
     }
     return 1;
