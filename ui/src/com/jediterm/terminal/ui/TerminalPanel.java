@@ -299,11 +299,15 @@ public class TerminalPanel extends JComponent implements TerminalDisplay, Termin
           }
         } else if (e.getButton() == MouseEvent.BUTTON2 && mySettingsProvider.pasteOnMiddleMouseClick() && isLocalMouseAction(e)) {
           handlePasteSelection();
-        } else if (e.getButton() == MouseEvent.BUTTON3) {
-          HyperlinkStyle contextHyperlink = findHyperlink(e.getPoint());
-          TerminalActionProvider provider = getTerminalActionProvider(contextHyperlink != null ? contextHyperlink.getLinkInfo() : null, e);
-          JPopupMenu popup = createPopupMenu(provider);
-          popup.show(e.getComponent(), e.getX(), e.getY());
+        } else if (e.getButton() == MouseEvent.BUTTON3 ) {
+          if (mySettingsProvider.pasteOnMiddleMouseClick() && isLocalMouseAction(e)){
+            handlePasteSelection();
+          } else {
+            HyperlinkStyle contextHyperlink = findHyperlink(e.getPoint());
+            TerminalActionProvider provider = getTerminalActionProvider(contextHyperlink != null ? contextHyperlink.getLinkInfo() : null, e);
+            JPopupMenu popup = createPopupMenu(provider);
+            popup.show(e.getComponent(), e.getX(), e.getY());
+          }
         }
         repaint();
       }
