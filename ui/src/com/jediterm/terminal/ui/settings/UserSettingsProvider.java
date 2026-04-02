@@ -15,6 +15,8 @@ public interface UserSettingsProvider {
 
   Font getTerminalFont();
 
+  Font getTerminalEmojiFont();
+
   float getTerminalFontSize();
 
   /**

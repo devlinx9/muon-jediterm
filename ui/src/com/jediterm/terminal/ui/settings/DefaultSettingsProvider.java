@@ -108,6 +108,11 @@ public class DefaultSettingsProvider implements SettingsProvider {
   }
 
   @Override
+  public Font getTerminalEmojiFont() {
+    return getTerminalFont();
+  }
+
+  @Override
   public float getTerminalFontSize() {
     return 14;
   }

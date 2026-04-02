@@ -8,7 +8,6 @@ import com.jediterm.core.util.TermSize;
 import com.jediterm.terminal.*;
 import com.jediterm.terminal.SubstringFinder.FindResult.FindItem;
 import com.jediterm.terminal.TextStyle.Option;
-import com.jediterm.terminal.util.ClipboardUtil;
 import com.jediterm.terminal.emulator.ColorPalette;
 import com.jediterm.terminal.emulator.charset.CharacterSets;
 import com.jediterm.terminal.emulator.mouse.MouseFormat;
@@ -22,6 +21,7 @@ import com.jediterm.terminal.ui.input.AwtMouseEvent;
 import com.jediterm.terminal.ui.input.AwtMouseWheelEvent;
 import com.jediterm.terminal.ui.settings.SettingsProvider;
 import com.jediterm.terminal.util.CharUtils;
+import com.jediterm.terminal.util.ClipboardUtil;
 import kotlin.Pair;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -101,6 +101,8 @@ public class TerminalPanel extends JComponent implements TerminalDisplay, Termin
   private TerminalActionProvider myNextActionProvider;
   private String myInputMethodUncommittedChars;
 
+  private Font myEmojiFont;
+
   private Timer myRepaintTimer;
   private final AtomicInteger scrollDy = new AtomicInteger(0);
   private final AtomicBoolean myHistoryBufferLineCountChanged = new AtomicBoolean(false);
@@ -174,6 +176,7 @@ public class TerminalPanel extends JComponent implements TerminalDisplay, Termin
     myBoldFont = myNormalFont.deriveFont(Font.BOLD);
     myItalicFont = myNormalFont.deriveFont(Font.ITALIC);
     myBoldItalicFont = myNormalFont.deriveFont(Font.BOLD | Font.ITALIC);
+    myEmojiFont = createEmojiFont();
 
     establishFontMetrics();
   }
@@ -577,6 +580,10 @@ public class TerminalPanel extends JComponent implements TerminalDisplay, Termin
 
   protected Font createFont() {
     return mySettingsProvider.getTerminalFont();
+  }
+
+  protected Font createEmojiFont() {
+    return mySettingsProvider.getTerminalEmojiFont();
   }
 
   private @NotNull Point panelToCharCoords(final java.awt.Point p) {
@@ -1497,12 +1504,39 @@ public class TerminalPanel extends JComponent implements TerminalDisplay, Termin
   protected @NotNull Font getFontToDisplay(char[] text, int start, int end, @NotNull TextStyle style) {
     boolean bold = style.hasOption(TextStyle.Option.BOLD);
     boolean italic = style.hasOption(TextStyle.Option.ITALIC);
+
+    Font primary;
     // workaround to fix Swing bad rendering of bold special chars on Linux
     if (bold && mySettingsProvider.DECCompatibilityMode() && CharacterSets.isDecBoxChar(text[start])) {
-      return myNormalFont;
+      primary = myNormalFont;
+    } else {
+      primary = bold ? (italic ? myBoldItalicFont : myBoldFont)
+                     : (italic ? myItalicFont : myNormalFont);
     }
-    return bold ? (italic ? myBoldItalicFont : myBoldFont)
-            : (italic ? myItalicFont : myNormalFont);
+
+    String s = new String(text, start, end - start);
+
+    if (canDisplayRange(primary, s)) {
+      return primary;
+    }
+
+    Font emojiFallback = deriveLikeStyle(myEmojiFont, bold, italic);
+    if (canDisplayRange(emojiFallback, s)) {
+      LOG.debug("Using emoji fallback='{}' for '{}'", emojiFallback.getFontName(), s);
+      return emojiFallback;
+    }
+
+    return primary;
+  }
+
+
+  private static boolean canDisplayRange(Font font, String text) {
+    return font.canDisplayUpTo(text) == -1;
+  }
+
+  private static Font deriveLikeStyle(Font base, boolean bold, boolean italic) {
+    int style = (bold ? Font.BOLD : Font.PLAIN) | (italic ? Font.ITALIC : Font.PLAIN);
+    return base.deriveFont(style, base.getSize2D());
   }
 
   private ColorPalette getPalette() {
