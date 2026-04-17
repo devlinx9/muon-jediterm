@@ -9,13 +9,14 @@ import org.jetbrains.annotations.NotNull;
 
 import java.awt.*;
 import java.util.Objects;
+import java.util.Set;
 
 public interface UserSettingsProvider {
   ColorPalette getTerminalColorPalette();
 
   Font getTerminalFont();
 
-  Font getTerminalEmojiFont();
+  Set<Font> getTerminalEmojiFonts();
 
   float getTerminalFontSize();
 

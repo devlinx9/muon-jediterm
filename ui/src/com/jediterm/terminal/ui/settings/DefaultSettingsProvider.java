@@ -15,6 +15,7 @@ import java.awt.*;
 import java.awt.event.InputEvent;
 import java.awt.event.KeyEvent;
 import java.util.Collections;
+import java.util.Set;
 
 import static com.jediterm.terminal.ui.AwtTransformers.fromAwtToTerminalColor;
 import static com.jediterm.terminal.ui.UtilKt.isMacOS;
@@ -108,8 +109,8 @@ public class DefaultSettingsProvider implements SettingsProvider {
   }
 
   @Override
-  public Font getTerminalEmojiFont() {
-    return getTerminalFont();
+  public Set<Font> getTerminalEmojiFonts() {
+    return Set.of(getTerminalFont());
   }
 
   @Override

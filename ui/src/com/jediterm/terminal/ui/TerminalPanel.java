@@ -45,6 +45,7 @@ import java.text.CharacterIterator;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -101,7 +102,7 @@ public class TerminalPanel extends JComponent implements TerminalDisplay, Termin
   private TerminalActionProvider myNextActionProvider;
   private String myInputMethodUncommittedChars;
 
-  private Font myEmojiFont;
+  private Set<Font> myEmojiFonts;
 
   private Timer myRepaintTimer;
   private final AtomicInteger scrollDy = new AtomicInteger(0);
@@ -176,7 +177,7 @@ public class TerminalPanel extends JComponent implements TerminalDisplay, Termin
     myBoldFont = myNormalFont.deriveFont(Font.BOLD);
     myItalicFont = myNormalFont.deriveFont(Font.ITALIC);
     myBoldItalicFont = myNormalFont.deriveFont(Font.BOLD | Font.ITALIC);
-    myEmojiFont = createEmojiFont();
+    myEmojiFonts = createEmojiFonts();
 
     establishFontMetrics();
   }
@@ -582,8 +583,8 @@ public class TerminalPanel extends JComponent implements TerminalDisplay, Termin
     return mySettingsProvider.getTerminalFont();
   }
 
-  protected Font createEmojiFont() {
-    return mySettingsProvider.getTerminalEmojiFont();
+  protected Set<Font> createEmojiFonts() {
+    return mySettingsProvider.getTerminalEmojiFonts();
   }
 
   private @NotNull Point panelToCharCoords(final java.awt.Point p) {
@@ -1520,10 +1521,12 @@ public class TerminalPanel extends JComponent implements TerminalDisplay, Termin
       return primary;
     }
 
-    Font emojiFallback = deriveLikeStyle(myEmojiFont, bold, italic);
-    if (canDisplayRange(emojiFallback, s)) {
-      LOG.debug("Using emoji fallback='{}' for '{}'", emojiFallback.getFontName(), s);
-      return emojiFallback;
+    for (var myEmojiFont : myEmojiFonts) {
+      Font emojiFallback = deriveLikeStyle(myEmojiFont, bold, italic);
+      if (canDisplayRange(emojiFallback, s)) {
+        LOG.debug("Using emoji fallback='{}' for '{}'", emojiFallback.getFontName(), s);
+        return emojiFallback;
+      }
     }
 
     return primary;
