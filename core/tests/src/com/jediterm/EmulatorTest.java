@@ -1,6 +1,8 @@
 package com.jediterm;
 
 import com.jediterm.core.Color;
+import com.jediterm.core.util.CellPosition;
+import com.jediterm.terminal.CursorShape;
 import com.jediterm.terminal.emulator.ColorPalette;
 import com.jediterm.terminal.model.TerminalLinesUtilKt;
 import com.jediterm.terminal.model.TerminalTextBuffer;
@@ -130,6 +132,75 @@ public class EmulatorTest extends EmulatorTestAbstract {
 
     assertScreenLines(session, List.of("", ""));
     assertHistoryLines(session, List.of());
+  }
+
+  public void testSplitSurrogatePair() throws IOException {
+    TestSession session = new TestSession(6, 3);
+    // \uD83D (high surrogate) + \uDE00 (low surrogate) = 😀
+    session.process("Hello\uD83D\uDE00\b, World!");
+    // Hello<high surrogate>
+    // , Worl
+    // d!
+    assertScreenLines(session, List.of(
+      "Hello\uD83D",
+      ", Worl",
+      "d!"
+    ));
+  }
+
+  public void testClear() throws IOException {
+    TestSession session = new TestSession(10, 5);
+    session.process(String.join("", List.of(
+      // position the cursor at the bottom of the screen
+      "\u001b[" + session.getTerminalTextBuffer().getHeight() + ";1H",
+
+      "foo\r\nbar\r\nbaz",
+
+      // move the cursor up
+      "\u001b[A",
+
+      // move the cursor to the beginning of the line
+      "\r",
+
+      // clear the screen from the cursor position to the end of the screen
+      "\u001b[0J"
+    )));
+    assertScreenLines(session, List.of(
+      "",
+      "",
+      "foo",
+      "",
+      ""
+    ));
+  }
+
+  public void testCsiWithSpaceIntermediate() throws IOException {
+    TestSession session = new TestSession(10, 2);
+    session.process(String.join("", List.of(
+      "0123456789",
+      "\u001b[D" /* move the cursor left */,
+      "\u001b[6 q" /* set the cursor shape to steady bar */
+    )));
+    assertScreenLines(session, List.of(
+      "0123456789"
+    ));
+    assertEquals(CursorShape.STEADY_VERTICAL_BAR, session.getDisplay().getCursorShape());
+    assertEquals(new CellPosition(10, 1), session.getTerminal().getCursorPosition());
+  }
+
+  public void testCharactersFromUnsupportedCsiAreNotPrinted() throws IOException {
+    TestSession session = new TestSession(20, 2);
+    session.process(String.join("", List.of(
+      "foo",
+      "\u001b[=5u", // https://sw.kovidgoyal.net/kitty/keyboard-protocol/#progressive-enhancement
+      " bar",
+      "\u001b[=0u",
+      " baz",
+      "\u001b[<u"  // https://sw.kovidgoyal.net/kitty/keyboard-protocol/#quickstart
+    )));
+    assertScreenLines(session, List.of(
+      "foo bar baz"
+    ));
   }
 
   private void assertScreenLines(@NotNull TestSession session, @NotNull List<String> expectedScreenLines) {

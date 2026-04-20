@@ -9,11 +9,14 @@ import org.jetbrains.annotations.NotNull;
 
 import java.awt.*;
 import java.util.Objects;
+import java.util.Set;
 
 public interface UserSettingsProvider {
   ColorPalette getTerminalColorPalette();
 
   Font getTerminalFont();
+
+  Set<Font> getTerminalEmojiFonts();
 
   float getTerminalFontSize();
 
@@ -95,5 +98,23 @@ public interface UserSettingsProvider {
 
   @NotNull TerminalTypeAheadSettings getTypeAheadSettings();
 
-  boolean sendArrowKeysInAlternativeMode();
+  default boolean simulateMouseScrollWithArrowKeysInAlternativeScreen() {
+    return sendArrowKeysInAlternativeMode();
+  }
+
+  @SuppressWarnings("DeprecatedIsStillUsed")
+  @Deprecated(forRemoval = true)
+  default boolean sendArrowKeysInAlternativeMode() {
+    return true;
+  }
+
+  /**
+   * By default, if you press Shift+Enter in the terminal, it will just send CR (the same as for Enter with no modifier)
+   * because the VT format knows nothing about Shift modifier.
+   * Though, from the user perspective, Shift+Enter should behave differently in CLI apps, for example, insert a new line.
+   * So, if this option is enabled, Shift+Enter will send Esc+CR instead of just CR.
+   */
+  default boolean shiftEnterSendsEscCR() {
+    return false;
+  }
 }

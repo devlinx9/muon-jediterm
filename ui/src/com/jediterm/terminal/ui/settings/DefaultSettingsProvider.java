@@ -15,6 +15,7 @@ import java.awt.*;
 import java.awt.event.InputEvent;
 import java.awt.event.KeyEvent;
 import java.util.Collections;
+import java.util.Set;
 
 import static com.jediterm.terminal.ui.AwtTransformers.fromAwtToTerminalColor;
 import static com.jediterm.terminal.ui.UtilKt.isMacOS;
@@ -105,6 +106,11 @@ public class DefaultSettingsProvider implements SettingsProvider {
       fontName = "Monospaced";
     }
     return new Font(fontName, Font.PLAIN, (int)getTerminalFontSize());
+  }
+
+  @Override
+  public Set<Font> getTerminalEmojiFonts() {
+    return Set.of(getTerminalFont());
   }
 
   @Override
@@ -213,7 +219,7 @@ public class DefaultSettingsProvider implements SettingsProvider {
   }
 
   @Override
-  public boolean sendArrowKeysInAlternativeMode() {
+  public boolean simulateMouseScrollWithArrowKeysInAlternativeScreen() {
     return true;
   }
 }

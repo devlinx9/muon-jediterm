@@ -17,9 +17,13 @@ public class ControlSequence {
 
   private ArrayList<Character> myUnhandledChars;
 
+  private StringBuilder myIntermediateChars;
+
   private boolean myStartsWithExclamationMark = false; // true when CSI !
   private boolean myStartsWithQuestionMark = false; // true when CSI ?
   private boolean myStartsWithMoreMark = false; // true when CSI >
+  private boolean myStartsWithLessMark = false; // true when CSI <
+  private boolean myStartsWithEqualsMark = false; // true when CSI =
 
   private final StringBuilder mySequenceString = new StringBuilder();
 
@@ -51,6 +55,12 @@ public class ControlSequence {
       else if (b == '>' && pos == 0) {
         myStartsWithMoreMark = true;
       }
+      else if (b == '<' && pos == 0) {
+        myStartsWithLessMark = true;
+      }
+      else if (b == '=' && pos == 0) {
+        myStartsWithEqualsMark = true;
+      }
       else if (b == ';') {
         if (digit > 0) {
           myArgc++;
@@ -67,6 +77,10 @@ public class ControlSequence {
         myArgv[myArgc] = myArgv[myArgc] * 10 + b - '0';
         digit++;
         seenDigit = 1;
+      }
+      else if (0x20 <= b && b <= 0x2F) {
+        // Intermediate bytes - valid inside CSI but not parameters.
+        addIntermediate(b);
       }
       else if (':' <= b && b <= '?') {
         addUnhandled(b);
@@ -89,6 +103,13 @@ public class ControlSequence {
     myUnhandledChars.add(b);
   }
 
+  private void addIntermediate(final char b) {
+    if (myIntermediateChars == null) {
+      myIntermediateChars = new StringBuilder();
+    }
+    myIntermediateChars.append(b);
+  }
+
   public boolean pushBackReordered(final TerminalDataStream channel) throws IOException {
     if (myUnhandledChars == null) return false;
     final char[] bytes = new char[1024]; // can't be more than the whole buffer...
@@ -102,12 +123,17 @@ public class ControlSequence {
     if (myStartsWithExclamationMark) {
       bytes[i++] = (byte)'!';
     }
-    if (myStartsWithQuestionMark) {
+    else if (myStartsWithQuestionMark) {
       bytes[i++] = (byte)'?';
     }
-    
-    if (myStartsWithMoreMark) {
+    else if (myStartsWithMoreMark) {
       bytes[i++] = (byte)'>';
+    }
+    else if (myStartsWithLessMark) {
+      bytes[i++] = (byte)'<';
+    }
+    else if (myStartsWithEqualsMark) {
+      bytes[i++] = (byte)'=';
     }
 
     for (int argi = 0; argi < myArgc; argi++) {
@@ -139,11 +165,17 @@ public class ControlSequence {
     if (myStartsWithExclamationMark) {
       sb.append("!");
     }
-    if (myStartsWithQuestionMark) {
+    else if (myStartsWithQuestionMark) {
       sb.append("?");
     }
-    if (myStartsWithMoreMark) {
+    else if (myStartsWithMoreMark) {
       sb.append(">");
+    }
+    else if (myStartsWithLessMark) {
+      sb.append("<");
+    }
+    else if (myStartsWithEqualsMark) {
+      sb.append("=");
     }
 
     String sep = "";
@@ -151,6 +183,9 @@ public class ControlSequence {
       sb.append(sep);
       sb.append(myArgv[i]);
       sep = ";";
+    }
+    if (myIntermediateChars != null) {
+      sb.append(myIntermediateChars);
     }
     sb.append(myFinalChar);
 

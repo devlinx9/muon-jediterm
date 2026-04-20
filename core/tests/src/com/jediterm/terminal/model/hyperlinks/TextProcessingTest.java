@@ -28,7 +28,7 @@ public class TextProcessingTest extends TestCase {
   public void setUp() throws Exception {
     super.setUp();
     mySession = new TestSession(100, 5);
-    TextStyle hyperlinkTextStyle = new TextStyle(TerminalColor.fromColor(TestSession.BLUE), TerminalColor.WHITE);
+    TextStyle hyperlinkTextStyle = new TextStyle(TerminalColor.color(TestSession.BLUE), TerminalColor.WHITE);
     myHyperlinkStyle = new HyperlinkStyle(hyperlinkTextStyle, new LinkInfo(() -> {}));
   }
 
@@ -79,7 +79,7 @@ public class TextProcessingTest extends TestCase {
   }
 
   public void testOscLink() throws IOException {
-    mySession.getTextProcessing().addAsyncHyperlinkFilter(new TestFilter(true));
+    mySession.getTerminal().setUrlHyperlinkFilter(new TestSyncFilter());
     mySession.process("\u001B]8;;" + TestFilter.formatLink("foo") + "\u001B\\Foo link\u001B]8;;\u001B\\ Some text 1");
     assertEquals(
       Arrays.asList(
